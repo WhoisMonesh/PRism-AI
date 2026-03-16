@@ -10,11 +10,20 @@ services:
     restart: unless-stopped
     ports:
       - "8000:8000"
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
     environment:
       # LLM Backend - choose one
       LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
       LLM_MODEL: ${LLM_MODEL:-llama3}
       LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434}
+
+      # Ollama Cloud
+      OLLAMA_CLOUD_URL: ${OLLAMA_CLOUD_URL:-https://ollama.com/v1}
+      OLLAMA_CLOUD_API_KEY: ${OLLAMA_CLOUD_API_KEY:-}
+      OLLAMA_CLOUD_MODEL: ${OLLAMA_CLOUD_MODEL:-llama3.1}
+      OLLAMA_CLOUD_ENABLED: ${OLLAMA_CLOUD_ENABLED:-false}
 
       # GitHub
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
@@ -50,23 +59,23 @@ services:
     networks:
       - prism-net
 
-  # Local Ollama (optional - remove if using cloud AI only)
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    restart: unless-stopped
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
-    networks:
-      - prism-net
+  # Local Ollama (Commented out for cloud-only mode)
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: ollama
+  #   restart: unless-stopped
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 5
+  #     start_period: 30s
+  #   networks:
+  #     - prism-net
     # Uncomment below for GPU support:
     # deploy:
     #   resources:

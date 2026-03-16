@@ -32,6 +32,10 @@ class SettingsUpdate(BaseModel):
     llm_base_url: Optional[str] = None
     auto_review: Optional[bool] = None
     min_score_to_approve: Optional[int] = None
+    github_token: Optional[str] = None
+    gitlab_token: Optional[str] = None
+    github_api_url: Optional[str] = None
+    gitlab_url: Optional[str] = None
 
 
 class HealthResponse(BaseModel):
@@ -58,7 +62,7 @@ async def health(settings: Settings = Depends(get_settings)) -> HealthResponse:
     )
 
 
-# ---------- Manual Review ----------
+# ---------- Manual Review & Describe ----------
 
 @router.post("/review", tags=["Review"])
 async def trigger_review(
@@ -91,6 +95,35 @@ async def trigger_review(
         changed_files=files,
     )
     return _result_to_dict(result)
+
+@router.post("/describe", tags=["Review"])
+async def trigger_describe(
+    req: ReviewRequest,
+    settings: Settings = Depends(get_settings),
+) -> Dict[str, Any]:
+    """Generate a PR description."""
+    owner, repo_name = req.repo.split("/", 1)
+    git_config = {
+        "type": req.provider,
+        "token": req.token or settings.get_git_token(req.provider),
+        "base_url": req.provider_base_url or settings.get_git_base_url(req.provider),
+    }
+    git = create_git_provider(git_config)
+
+    try:
+        diff = await git.get_pr_diff(owner, repo_name, req.pr_number)
+        files = await git.get_pr_files(owner, repo_name, req.pr_number)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Git provider error: {e}")
+
+    engine = ReviewEngine(settings.to_engine_config())
+    description = await engine.describe_pr(
+        pr_number=req.pr_number,
+        repo=req.repo,
+        diff=diff,
+        changed_files=files,
+    )
+    return {"description": description}
 
 
 # ---------- Webhook ----------

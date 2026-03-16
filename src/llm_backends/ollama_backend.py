@@ -123,6 +123,9 @@ class OllamaClient(LLMClient):
             async with httpx.AsyncClient(timeout=5) as client:
                 url = f"{self.base_url}/api/tags" if not self.cloud else f"{self.base_url}/models"
                 resp = await client.get(url, headers=self._headers())
+                if resp.status_code != 200:
+                    logger.warning(f"[Ollama] Health check failed for {url}: {resp.status_code} {resp.text}")
                 return resp.status_code == 200
-        except Exception:
+        except Exception as e:
+            logger.warning(f"[Ollama] Health check error for {self.base_url}: {e}")
             return False

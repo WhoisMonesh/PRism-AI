@@ -190,12 +190,30 @@ Settings.to_engine_config = _settings_to_engine_config
 
 
 def _settings_to_ui_dict(self) -> Dict[str, Any]:
+    p = self.llm_provider
+    if p == "ollama":
+        model = self.ollama_model
+        base_url = self.ollama_base_url
+    elif p == "ollama_cloud":
+        model = self.ollama_cloud_model
+        base_url = self.ollama_cloud_url
+    elif p == "vertex":
+        model = self.vertex_model
+        base_url = ""
+    elif p == "bedrock":
+        model = self.bedrock_model
+        base_url = ""
+    elif p in ("openai", "litellm"):
+        model = self.openai_model
+        base_url = self.openai_api_base
+    else:
+        model = self.ollama_model
+        base_url = self.ollama_base_url
+
     return {
-        "llm_provider": self.llm_provider,
-        "llm_model": getattr(self, f"{self.llm_provider}_model",
-                             self.ollama_model),
-        "llm_base_url": getattr(self, f"{self.llm_provider}_base_url",
-                                self.ollama_base_url),
+        "llm_provider": p,
+        "llm_model": model,
+        "llm_base_url": base_url,
         "auto_review": self.auto_review_on_open,
         "min_score_to_approve": 70,
         "inline_comments": self.inline_comments,
@@ -205,14 +223,31 @@ def _settings_to_ui_dict(self) -> Dict[str, Any]:
         "teams_webhook_url": self.teams_webhook_url,
         "metrics_enabled": self.metrics_enabled,
         "environment": self.environment,
+        "github_token": self.github_token,
+        "gitlab_token": self.gitlab_token,
+        "github_api_url": self.github_api_url,
+        "gitlab_url": self.gitlab_url,
     }
 
 Settings.to_ui_dict = _settings_to_ui_dict
 
 
 def _settings_update(self, data: Dict[str, Any]) -> None:
+    p = data.get("llm_provider", self.llm_provider)
+    if "llm_model" in data:
+        if p == "ollama": object.__setattr__(self, "ollama_model", data["llm_model"])
+        elif p == "ollama_cloud": object.__setattr__(self, "ollama_cloud_model", data["llm_model"])
+        elif p == "vertex": object.__setattr__(self, "vertex_model", data["llm_model"])
+        elif p == "bedrock": object.__setattr__(self, "bedrock_model", data["llm_model"])
+        elif p in ("openai", "litellm"): object.__setattr__(self, "openai_model", data["llm_model"])
+
+    if "llm_base_url" in data:
+        if p == "ollama": object.__setattr__(self, "ollama_base_url", data["llm_base_url"])
+        elif p == "ollama_cloud": object.__setattr__(self, "ollama_cloud_url", data["llm_base_url"])
+        elif p in ("openai", "litellm"): object.__setattr__(self, "openai_api_base", data["llm_base_url"])
+
     for key, value in data.items():
-        if hasattr(self, key):
+        if key not in ("llm_model", "llm_base_url") and hasattr(self, key):
             object.__setattr__(self, key, value)
 
 Settings.update = _settings_update

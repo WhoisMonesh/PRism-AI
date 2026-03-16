@@ -9,55 +9,60 @@ PRism-AI Evolution Engine
 from __future__ import annotations
 import json
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional
 from loguru import logger
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.cron import CronTrigger
 from .config import settings
-
 
 METRICS_FILE = Path("data/evolution_metrics.json")
 PROMPT_STORE = Path("data/evolved_prompts.json")
-
 
 class EvolutionMetrics:
     """Tracks per-tool quality metrics to drive prompt evolution."""
 
     def __init__(self):
         METRICS_FILE.parent.mkdir(parents=True, exist_ok=True)
-        self._data: dict[str, Any] = self._load()
+        self._data: Dict[str, Any] = self._load()
 
-    def _load(self) -> dict:
+    def _load(self) -> Dict[str, Any]:
         if METRICS_FILE.exists():
-            return json.loads(METRICS_FILE.read_text())
+            try:
+                return json.loads(METRICS_FILE.read_text())
+            except Exception as e:
+                logger.error(f"[Evolution] Failed to load metrics: {e}")
         return {"tools": {}, "reviews": [], "last_evolved": None}
 
     def _save(self):
-        METRICS_FILE.write_text(json.dumps(self._data, indent=2, default=str))
+        try:
+            METRICS_FILE.write_text(json.dumps(self._data, indent=2, default=str))
+        except Exception as e:
+            logger.error(f"[Evolution] Failed to save metrics: {e}")
 
-    def record_review(self, tool: str, pr_url: str, model: str, tokens_used: int,
-                      latency_ms: float, feedback: str | None = None):
+    def record_review(self, tool: str, repo: str, pr_number: int, model: str, tokens_used: int,
+                      latency_ms: float, feedback: Optional[str] = None):
         """Record a completed review event."""
+        pr_id = f"{repo}#{pr_number}"
         entry = {
-            "ts": datetime.utcnow().isoformat(),
+            "ts": datetime.now(timezone.utc).isoformat(),
             "tool": tool,
-            "pr_url": pr_url,
+            "pr_id": pr_id,
             "model": model,
             "tokens_used": tokens_used,
             "latency_ms": latency_ms,
             "feedback": feedback,  # 'positive' | 'negative' | None
         }
         self._data["reviews"].append(entry)
-        # trim old data beyond retention window
-        cutoff = datetime.utcnow() - timedelta(days=settings.evolution_metrics_retention_days)
+        
+        # Trim old data beyond retention window
+        retention_days = getattr(settings, "evolution_metrics_retention_days", 90)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
         self._data["reviews"] = [
             r for r in self._data["reviews"]
             if datetime.fromisoformat(r["ts"]) > cutoff
         ]
         self._save()
-        logger.debug(f"[Evolution] Recorded review metric for tool={tool}")
+        logger.debug(f"[Evolution] Recorded {tool} metric for {pr_id}")
 
     def record_feedback(self, pr_url: str, tool: str, is_positive: bool):
         """Update existing review record with human feedback."""

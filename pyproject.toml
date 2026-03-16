@@ -79,7 +79,7 @@ dev = [
 ]
 vault = ["hvac>=2.1.0"]
 bitbucket = ["atlassian-python-api>=3.41.0"]
-azure = ["azure-devops>=7.1.0", "azure-identity>=1.16.0"]
+azure = ["azure-devops>=6.0.0b4", "azure-identity>=1.16.0"]
 all = ["prism-ai[dev,vault,bitbucket,azure]"]
 
 [project.scripts]

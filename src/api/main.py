@@ -56,19 +56,28 @@ def create_app() -> FastAPI:
     dist_dir = frontend_dir / "dist"
     
     if dist_dir.exists():
-        app.mount("/assets", StaticFiles(directory=dist_dir / "assets"), name="assets")
-        @app.get("/", include_in_schema=False)
-        @app.get("/{full_path:path}", include_in_schema=False)
-        async def serve_spa_dist(full_path: str = "") -> FileResponse:
-            index = dist_dir / "index.html"
-            return FileResponse(str(index))
-    elif frontend_dir.exists():
-        @app.get("/", include_in_schema=False)
-        @app.get("/{full_path:path}", include_in_schema=False)
-        async def serve_spa_dev(full_path: str = "") -> FileResponse:
-            index = frontend_dir / "index.html"
-            return FileResponse(str(index))
+        # Mount the assets directory for scripts/styles
+        if (dist_dir / "assets").exists():
+            app.mount("/assets", StaticFiles(directory=dist_dir / "assets"), name="assets")
+        
+        # Serve other static files (favicon, icons, etc.) from dist root
+        @app.get("/{file_name}", include_in_schema=False)
+        async def serve_static_file(file_name: str) -> Any:
+            file_path = dist_dir / file_name
+            if file_path.is_file():
+                return FileResponse(str(file_path))
+            # If not a file, fall back to SPA index.html
+            return FileResponse(str(dist_dir / "index.html"))
 
+        @app.get("/", include_in_schema=False)
+        async def serve_index() -> FileResponse:
+            return FileResponse(str(dist_dir / "index.html"))
+
+        # Catch-all for SPA routing
+        @app.get("/{full_path:path}", include_in_schema=False)
+        async def serve_spa(full_path: str) -> FileResponse:
+            return FileResponse(str(dist_dir / "index.html"))
+    
     return app
 
 

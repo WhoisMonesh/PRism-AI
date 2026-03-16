@@ -1,12 +1,15 @@
 """Core PR review engine for PRism-AI."""
 from __future__ import annotations
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 from .llm_backends import get_llm_client as create_llm_client
 from .policy import PolicyEngine
+from .evolution import EvolutionMetrics
 
 logger = logging.getLogger(__name__)
+metrics = EvolutionMetrics()
 
 
 @dataclass
@@ -57,6 +60,7 @@ class ReviewEngine:
         changed_files: Optional[List[str]] = None,
     ) -> ReviewResult:
         """Run full AI review of a PR diff."""
+        start_time = time.monotonic()
         if len(diff) > self.max_diff_chars:
             diff = diff[: self.max_diff_chars] + "\n... [diff truncated] ..."
 
@@ -66,6 +70,17 @@ class ReviewEngine:
         try:
             raw = await self.llm.generate(prompt, SYSTEM_PROMPT)
             result = self._parse_response(raw, pr_number, repo)
+            
+            # Record metrics
+            latency = (time.monotonic() - start_time) * 1000
+            metrics.record_review(
+                tool="review",
+                repo=repo,
+                pr_number=pr_number,
+                model=getattr(self.llm, "model", "unknown"),
+                tokens_used=len(prompt + raw) // 4,  # Rough estimate
+                latency_ms=latency
+            )
         except Exception as e:
             logger.error(f"[ReviewEngine] LLM error: {e}")
             result = ReviewResult(
@@ -79,6 +94,36 @@ class ReviewEngine:
         # Apply policy rules
         result = self.policy.apply(result)
         return result
+
+    async def describe_pr(
+        self,
+        pr_number: int,
+        repo: str,
+        diff: str,
+        changed_files: List[str]
+    ) -> str:
+        """Generate a PR description based on the diff."""
+        start_time = time.monotonic()
+        prompt = f"Describe the changes in this PR based on the following diff:\n\n{diff}"
+        system = "You are a helpful assistant that writes clear, concise PR descriptions."
+        
+        try:
+            description = await self.llm.generate(prompt, system)
+            
+            # Record metrics
+            latency = (time.monotonic() - start_time) * 1000
+            metrics.record_review(
+                tool="describe",
+                repo=repo,
+                pr_number=pr_number,
+                model=getattr(self.llm, "model", "unknown"),
+                tokens_used=len(prompt + description) // 4,
+                latency_ms=latency
+            )
+            return description
+        except Exception as e:
+            logger.error(f"[ReviewEngine] Describe error: {e}")
+            return f"Failed to generate description: {e}"
 
     def _build_prompt(self, pr_number: int, repo: str, diff: str, title: str, body: str, files: List[str]) -> str:
         files_str = ", ".join(files[:20]) if files else "unknown"

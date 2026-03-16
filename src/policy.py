@@ -3,10 +3,11 @@ PRism-AI RBAC Policy Engine
 Supports: global policy.yaml, per-repo .prism.yml, role-based tool access
 """
 from __future__ import annotations
+import re
 import yaml
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Dict, List, Optional
 from loguru import logger
 from .config import settings
 
@@ -18,7 +19,9 @@ ALL_TOOLS = [
 
 @dataclass
 class RepoPolicy:
-    allowed_tools: list[str] = field(default_factory=lambda: ["review", "describe"])
+    allowed_tools: List[str] = field(default_factory=lambda: ["review", "describe"])
+    excluded_files: List[str] = field(default_factory=list)
+    min_score_to_approve: int = 70
     allowed_llm_providers: list[str] = field(default_factory=lambda: ["ollama"])
     allowed_llm_models: list[str] = field(default_factory=list)
     allow_edit: bool = False
@@ -95,13 +98,24 @@ class PolicyEngine:
 
     def apply(self, result: Any) -> Any:
         """Apply policy rules to a ReviewResult."""
-        # For now, just a placeholder that can modify the result based on policy
-        # e.g. enforcing score thresholds, overriding approval, etc.
         policy = self.get_policy(result.repo)
         
-        # Example: if score < 50, force not approved regardless of LLM output
-        if result.score < 50:
+        # Enforce minimum score for approval
+        if result.score < policy.min_score_to_approve:
             result.approved = False
+            
+        # Filter comments for excluded files
+        if policy.excluded_files:
+            filtered_comments = []
+            for comment in result.comments:
+                excluded = False
+                for pattern in policy.excluded_files:
+                    if re.search(pattern, comment.path):
+                        excluded = True
+                        break
+                if not excluded:
+                    filtered_comments.append(comment)
+            result.comments = filtered_comments
             
         # Example: if critical security issue found, force not approved
         has_critical_security = any(
