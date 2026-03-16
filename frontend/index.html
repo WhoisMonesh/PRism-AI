@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PRism-AI - Code Review Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    body { background: #0f172a; color: #e2e8f0; font-family: 'Inter', sans-serif; }
+    .card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 1.5rem; }
+    .badge-critical { background: #7f1d1d; color: #fca5a5; }
+    .badge-warning { background: #78350f; color: #fcd34d; }
+    .badge-info { background: #1e3a5f; color: #93c5fd; }
+    .badge-suggestion { background: #14532d; color: #86efac; }
+    .score-ring { width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.5rem; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="text/babel">
+    const { useState, useEffect, useCallback } = React;
+    const API = window.location.origin + '/api/v1';
+
+    function Badge({ severity }) {
+      const cls = `badge-${severity} px-2 py-0.5 rounded text-xs font-semibold uppercase`;
+      return <span className={cls}>{severity}</span>;
+    }
+
+    function ScoreRing({ score }) {
+      const color = score >= 70 ? '#22c55e' : score >= 50 ? '#f59e0b' : '#ef4444';
+      return (
+        <div className="score-ring" style={{ border: `4px solid ${color}`, color }}>
+          {score}
+        </div>
+      );
+    }
+
+    function HealthBadge({ healthy }) {
+      return (
+        <span className={`px-2 py-1 rounded-full text-xs font-bold ${healthy ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}`}>
+          {healthy ? 'Connected' : 'Disconnected'}
+        </span>
+      );
+    }
+
+    function SettingsPanel({ settings, onSave }) {
+      const [form, setForm] = useState(settings || {});
+      const [saving, setSaving] = useState(false);
+      const [models, setModels] = useState([]);
+
+      useEffect(() => {
+        fetch(`${API}/models`).then(r => r.json()).then(d => setModels(d.models || []));
+      }, []);
+
+      const save = async () => {
+        setSaving(true);
+        const res = await fetch(`${API}/settings`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form) });
+        const data = await res.json();
+        onSave(data);
+        setSaving(false);
+      };
+
+      const inp = 'w-full bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500';
+      const lbl = 'block text-xs text-slate-400 mb-1';
+
+      return (
+        <div className="card">
+          <h2 className="text-lg font-bold mb-4">Settings</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className={lbl}>LLM Provider</label>
+              <select className={inp} value={form.llm_provider||''} onChange={e=>setForm({...form,llm_provider:e.target.value})}>
+                <option value="ollama">Ollama (Local)</option>
+                <option value="ollama_cloud">Ollama Cloud</option>
+                <option value="vertex">Google Vertex AI</option>
+                <option value="bedrock">AWS Bedrock</option>
+                <option value="openai">OpenAI / Compatible</option>
+              </select>
+            </div>
+            <div>
+              <label className={lbl}>LLM Model</label>
+              <input className={inp} list="model-list" value={form.llm_model||''} onChange={e=>setForm({...form,llm_model:e.target.value})} placeholder="e.g. llama3" />
+              <datalist id="model-list">{models.map(m=><option key={m} value={m}/>)}</datalist>
+            </div>
+            <div>
+              <label className={lbl}>LLM Base URL</label>
+              <input className={inp} value={form.llm_base_url||''} onChange={e=>setForm({...form,llm_base_url:e.target.value})} placeholder="http://localhost:11434" />
+            </div>
+            <div>
+              <label className={lbl}>Min Score to Approve (0-100)</label>
+              <input className={inp} type="number" min="0" max="100" value={form.min_score_to_approve||70} onChange={e=>setForm({...form,min_score_to_approve:+e.target.value})} />
+            </div>
+            <div className="flex items-center gap-3">
+              <input type="checkbox" id="auto" checked={!!form.auto_review} onChange={e=>setForm({...form,auto_review:e.target.checked})} className="w-4 h-4" />
+              <label htmlFor="auto" className="text-sm">Auto-review on webhook</label>
+            </div>
+          </div>
+          <button onClick={save} disabled={saving} className="mt-4 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded text-sm font-semibold">
+            {saving ? 'Saving...' : 'Save Settings'}
+          </button>
+        </div>
+      );
+    }
+
+    function ReviewPanel() {
+      const [repo, setRepo] = useState('');
+      const [prNum, setPrNum] = useState('');
+      const [provider, setProvider] = useState('github');
+      const [token, setToken] = useState('');
+      const [loading, setLoading] = useState(false);
+      const [result, setResult] = useState(null);
+      const [error, setError] = useState('');
+
+      const run = async () => {
+        setLoading(true); setError(''); setResult(null);
+        try {
+          const res = await fetch(`${API}/review`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ repo, pr_number: +prNum, provider, token: token || undefined }),
+          });
+          if (!res.ok) throw new Error(await res.text());
+          setResult(await res.json());
+        } catch(e) { setError(e.message); }
+        setLoading(false);
+      };
+
+      const inp = 'bg-slate-700 border border-slate-600 rounded px-3 py-2 text-sm focus:outline-none focus:border-blue-500';
+
+      return (
+        <div className="space-y-4">
+          <div className="card">
+            <h2 className="text-lg font-bold mb-4">Manual PR Review</h2>
+            <div className="flex flex-wrap gap-3">
+              <input className={`${inp} flex-1 min-w-40`} placeholder="owner/repo" value={repo} onChange={e=>setRepo(e.target.value)} />
+              <input className={`${inp} w-28`} placeholder="PR #" type="number" value={prNum} onChange={e=>setPrNum(e.target.value)} />
+              <select className={inp} value={provider} onChange={e=>setProvider(e.target.value)}>
+                <option value="github">GitHub</option>
+                <option value="gitlab">GitLab</option>
+              </select>
+              <input className={`${inp} flex-1 min-w-40`} placeholder="Token (optional)" type="password" value={token} onChange={e=>setToken(e.target.value)} />
+              <button onClick={run} disabled={loading||!repo||!prNum} className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-5 py-2 rounded text-sm font-semibold">
+                {loading ? 'Reviewing...' : 'Review PR'}
+              </button>
+            </div>
+            {error && <p className="mt-2 text-red-400 text-sm">{error}</p>}
+          </div>
+
+          {result && (
+            <div className="card space-y-4">
+              <div className="flex items-center gap-4">
+                <ScoreRing score={result.score} />
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-xl font-bold">{result.repo} #{result.pr_number}</h3>
+                    <span className={`px-2 py-0.5 rounded text-xs font-bold ${result.approved ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}`}>
+                      {result.approved ? 'APPROVED' : 'CHANGES REQUESTED'}
+                    </span>
+                  </div>
+                  <p className="text-slate-400 text-sm mt-1">{result.summary}</p>
+                </div>
+              </div>
+              {result.comments.length > 0 && (
+                <div>
+                  <h4 className="font-semibold mb-2">Comments ({result.comments.length})</h4>
+                  <div className="space-y-2">
+                    {result.comments.map((c,i) => (
+                      <div key={i} className="bg-slate-800 rounded p-3 text-sm">
+                        <div className="flex items-center gap-2 mb-1">
+                          <Badge severity={c.severity} />
+                          <span className="text-slate-400">{c.path}{c.line ? `:${c.line}` : ''}</span>
+                          <span className="text-slate-500 text-xs">[{c.category}]</span>
+                        </div>
+                        <p>{c.message}</p>
+                        {c.suggestion && <pre className="mt-2 bg-slate-900 p-2 rounded text-xs overflow-auto">{c.suggestion}</pre>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function App() {
+      const [tab, setTab] = useState('review');
+      const [health, setHealth] = useState(null);
+      const [settings, setSettings] = useState(null);
+
+      useEffect(() => {
+        fetch(`${API}/health`).then(r=>r.json()).then(setHealth).catch(()=>{});
+        fetch(`${API}/settings`).then(r=>r.json()).then(setSettings).catch(()=>{});
+      }, []);
+
+      const tabs = ['review','settings'];
+
+      return (
+        <div className="min-h-screen">
+          <header className="bg-slate-900 border-b border-slate-700 px-6 py-4">
+            <div className="max-w-6xl mx-auto flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="text-2xl">🔬</div>
+                <div>
+                  <h1 className="text-xl font-bold text-white">PRism-AI</h1>
+                  <p className="text-xs text-slate-400">Free & Open-Source Code Review Agent</p>
+                </div>
+              </div>
+              {health && (
+                <div className="flex items-center gap-3 text-sm">
+                  <span className="text-slate-400">{health.llm_backend}</span>
+                  <HealthBadge healthy={health.llm_healthy} />
+                </div>
+              )}
+            </div>
+          </header>
+
+          <div className="max-w-6xl mx-auto px-6 py-6">
+            <div className="flex gap-2 mb-6">
+              {tabs.map(t => (
+                <button key={t} onClick={()=>setTab(t)}
+                  className={`px-4 py-2 rounded text-sm font-semibold capitalize ${
+                    tab===t ? 'bg-blue-600 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
+                  }`}>
+                  {t}
+                </button>
+              ))}
+            </div>
+            {tab === 'review' && <ReviewPanel />}
+            {tab === 'settings' && settings && <SettingsPanel settings={settings} onSave={setSettings} />}
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

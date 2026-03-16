@@ -1,0 +1,85 @@
+version: "3.9"
+
+services:
+  # PRism-AI API + Frontend
+  prism-ai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: prism-ai
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      # LLM Backend - choose one
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_MODEL: ${LLM_MODEL:-llama3}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434}
+
+      # GitHub
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      GITHUB_BASE_URL: ${GITHUB_BASE_URL:-https://api.github.com}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:-}
+
+      # GitLab
+      GITLAB_TOKEN: ${GITLAB_TOKEN:-}
+      GITLAB_BASE_URL: ${GITLAB_BASE_URL:-https://gitlab.com}
+
+      # Vertex AI
+      VERTEX_PROJECT: ${VERTEX_PROJECT:-}
+      VERTEX_LOCATION: ${VERTEX_LOCATION:-us-central1}
+      GOOGLE_APPLICATION_CREDENTIALS: /secrets/gcp-sa.json
+
+      # AWS Bedrock
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_DEFAULT_REGION: ${AWS_DEFAULT_REGION:-us-east-1}
+
+      # OpenAI / compatible
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_API_BASE: ${OPENAI_API_BASE:-https://api.openai.com/v1}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+
+      # Policy
+      RBAC_ENABLED: ${RBAC_ENABLED:-true}
+      POLICY_FILE: ${POLICY_FILE:-policy.yaml}
+      INLINE_COMMENTS: ${INLINE_COMMENTS:-true}
+    volumes:
+      - ./secrets:/secrets:ro
+      - prism_data:/app/data
+    networks:
+      - prism-net
+
+  # Local Ollama (optional - remove if using cloud AI only)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    networks:
+      - prism-net
+    # Uncomment below for GPU support:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+volumes:
+  ollama_data:
+  prism_data:
+
+networks:
+  prism-net:
+    driver: bridge
