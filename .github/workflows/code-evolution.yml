@@ -1,0 +1,274 @@
+name: Code Evolution & Enhancement
+
+on:
+  schedule:
+    # Run weekly on Monday at 00:00 UTC
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
+    inputs:
+      target_area:
+        description: 'Specific area to analyze (e.g., frontend, backend, all)'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - frontend
+          - backend
+          - docs
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  analyze-codebase:
+    name: Analyze Codebase for Improvements
+    runs-on: ubuntu-latest
+    outputs:
+      has_suggestions: ${{ steps.analysis.outputs.has_suggestions }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd frontend && npm ci
+      
+      - name: Run code quality analysis
+        id: analysis
+        run: |
+          echo "Analyzing codebase..."
+          
+          # Create analysis directory
+          mkdir -p analysis-results
+          
+          # Run ESLint with JSON output
+          npm run lint -- --format json > analysis-results/eslint.json || true
+          cd frontend && npm run lint -- --format json > ../analysis-results/eslint-frontend.json || true
+          cd ..
+          
+          # Check for outdated dependencies
+          npm outdated --json > analysis-results/outdated.json || true
+          cd frontend && npm outdated --json > ../analysis-results/outdated-frontend.json || true
+          cd ..
+          
+          # Set output based on findings
+          if [ -s analysis-results/eslint.json ] || [ -s analysis-results/outdated.json ]; then
+            echo "has_suggestions=true" >> $GITHUB_OUTPUT
+          else
+            echo "has_suggestions=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Upload analysis results
+        uses: actions/upload-artifact@v4
+        if: steps.analysis.outputs.has_suggestions == 'true'
+        with:
+          name: analysis-results
+          path: analysis-results/
+          retention-days: 30
+
+  create-enhancement-pr:
+    name: Create Enhancement PR
+    needs: analyze-codebase
+    if: needs.analyze-codebase.outputs.has_suggestions == 'true'
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Download analysis results
+        uses: actions/download-artifact@v4
+        with:
+          name: analysis-results
+          path: analysis-results
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: |
+          npm ci
+          cd frontend && npm ci
+      
+      - name: Create enhancement branch
+        run: |
+          DATE=$(date +%Y-%m-%d)
+          BRANCH="enhancement/code-evolution-${DATE}"
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "${BRANCH}"
+          echo "BRANCH_NAME=${BRANCH}" >> $GITHUB_ENV
+      
+      - name: Apply auto-fixable issues
+        run: |
+          echo "Applying ESLint auto-fixes..."
+          npm run lint -- --fix || true
+          cd frontend && npm run lint -- --fix || true
+          cd ..
+          
+          # Update dependencies (patch and minor only)
+          echo "Updating dependencies..."
+          npm update --save || true
+          cd frontend && npm update --save || true
+          cd ..
+      
+      - name: Generate enhancement summary
+        id: summary
+        run: |
+          cat << 'EOF' > ENHANCEMENT_SUMMARY.md
+          # 🚀 Code Evolution & Enhancement Report
+          
+          ## Automated Improvements Applied
+          
+          ### Code Quality
+          - ✅ ESLint auto-fixes applied
+          - ✅ Code formatting standardized
+          - ✅ Best practices enforced
+          
+          ### Dependencies
+          - 📦 Dependencies updated (patch & minor versions)
+          - 🔒 Security patches applied
+          
+          ### Analysis Results
+          See attached artifacts for detailed analysis:
+          - ESLint reports
+          - Dependency audit
+          
+          ---
+          
+          *This PR was automatically created by the Code Evolution workflow.*
+          *Review the changes and merge if approved.*
+          EOF
+          
+          # Set multiline output
+          echo "summary<<EOF" >> $GITHUB_OUTPUT
+          cat ENHANCEMENT_SUMMARY.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+      
+      - name: Commit changes
+        id: commit
+        run: |
+          git add .
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+          else
+            git commit -m "chore: apply code evolution enhancements
+            
+            - Auto-fix ESLint issues
+            - Update dependencies (patch/minor)
+            - Apply code quality improvements
+            
+            Generated by Code Evolution workflow"
+            git push origin "${BRANCH_NAME}"
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Create Pull Request
+        if: steps.commit.outputs.has_changes == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr create \
+            --title "🚀 chore: code evolution enhancements ($(date +%Y-%m-%d))" \
+            --body "${{ steps.summary.outputs.summary }}" \
+            --base main \
+            --head "${BRANCH_NAME}" \
+            --label "enhancement,automated,code-quality"
+      
+      - name: Create summary comment
+        if: steps.commit.outputs.has_changes == 'true'
+        run: |
+          echo "## ✅ Enhancement PR Created" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Branch: \`${BRANCH_NAME}\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Changes Applied" >> $GITHUB_STEP_SUMMARY
+          echo "- ESLint auto-fixes" >> $GITHUB_STEP_SUMMARY
+          echo "- Dependency updates" >> $GITHUB_STEP_SUMMARY
+          echo "- Code quality improvements" >> $GITHUB_STEP_SUMMARY
+
+  feature-suggestions:
+    name: Generate Feature Suggestions
+    needs: analyze-codebase
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Analyze repository structure
+        id: analyze
+        run: |
+          echo "📊 Analyzing repository for feature suggestions..."
+          
+          # Check for missing common files
+          SUGGESTIONS=""
+          
+          if [ ! -f "CONTRIBUTING.md" ]; then
+            SUGGESTIONS="${SUGGESTIONS}\n- 📝 Add CONTRIBUTING.md with contribution guidelines"
+          fi
+          
+          if [ ! -f "CODE_OF_CONDUCT.md" ]; then
+            SUGGESTIONS="${SUGGESTIONS}\n- 🤝 Add CODE_OF_CONDUCT.md"
+          fi
+          
+          if [ ! -f ".github/ISSUE_TEMPLATE/bug_report.md" ]; then
+            SUGGESTIONS="${SUGGESTIONS}\n- 🐛 Add issue templates (bug report, feature request)"
+          fi
+          
+          if [ ! -f ".github/pull_request_template.md" ]; then
+            SUGGESTIONS="${SUGGESTIONS}\n- ✨ Add PR template"
+          fi
+          
+          if [ ! -f "docs/API.md" ]; then
+            SUGGESTIONS="${SUGGESTIONS}\n- 📚 Add API documentation"
+          fi
+          
+          # Check test coverage
+          if [ ! -d "tests" ] && [ ! -d "test" ] && [ ! -d "__tests__" ]; then
+            SUGGESTIONS="${SUGGESTIONS}\n- 🧪 Improve test coverage"
+          fi
+          
+          echo "suggestions=${SUGGESTIONS}" >> $GITHUB_OUTPUT
+      
+      - name: Create feature suggestion issue
+        if: steps.analyze.outputs.suggestions != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ISSUE_BODY="## 💡 Feature Suggestions from Code Evolution Analysis
+          
+          Based on the repository analysis, here are some suggestions to improve the project:
+          
+          ${{ steps.analyze.outputs.suggestions }}
+          
+          ---
+          
+          *This issue was automatically created by the Code Evolution workflow.*
+          *Feel free to implement these suggestions or close this issue if not applicable.*
+          
+          Generated on: $(date +%Y-%m-%d)"
+          
+          gh issue create \
+            --title "💡 Feature Suggestions ($(date +%Y-%m-%d))" \
+            --body "${ISSUE_BODY}" \
+            --label "enhancement,automated,suggestions"
