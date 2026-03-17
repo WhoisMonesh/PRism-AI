@@ -1,0 +1,42 @@
+stages:
+  - build
+  - test
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  DOCKER_TLS_CERTDIR: ""
+
+build:
+  stage: build
+  image: docker:latest
+  services:
+    - docker:dind
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA -f Dockerfile .
+    - docker build -t $CI_REGISTRY_IMAGE-frontend:$CI_COMMIT_SHORT_SHA -f Dockerfile.frontend .
+    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+    - docker push $CI_REGISTRY_IMAGE-frontend:$CI_COMMIT_SHORT_SHA
+  only:
+    - main
+    - tags
+
+test:
+  stage: test
+  image: python:3.11
+  script:
+    - pip install -r backend/requirements.txt
+    - echo "Running tests..."
+  only:
+    - merge_requests
+
+deploy:
+  stage: deploy
+  image: docker:latest
+  script:
+    - echo "Deploying to production..."
+    - docker-compose up -d
+  only:
+    - main
+  when: manual

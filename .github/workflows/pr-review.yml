@@ -1,0 +1,30 @@
+name: PRism AI Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  ai-review:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger PRism AI Review
+        run: |
+          curl -X POST "${{ secrets.PRISM_AI_URL }}/api/v1/webhook/github" \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature-256: sha256=${{ secrets.GITHUB_WEBHOOK_SECRET }}" \
+            -H "X-GitHub-Event: pull_request" \
+            -d @- <<EOF
+          {
+            "action": "${{ github.event.action }}",
+            "pull_request": {
+              "number": ${{ github.event.pull_request.number }}
+            },
+            "repository": {
+              "owner": {
+                "login": "${{ github.repository_owner }}"
+              },
+              "name": "${{ github.event.repository.name }}"
+            }
+          }
+          EOF

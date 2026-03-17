@@ -1,0 +1,65 @@
+policies:
+  - repo_pattern: "*"
+    allowed_tools:
+      - review
+      - describe
+      - improve
+      - security
+      - changelog
+      - ask
+      - labels
+      - test_gen
+      - perf
+      - self_review
+      - auto_issue
+    allowed_llms:
+      - provider: ollama
+        models:
+          - llama3.1
+          - qwen2.5-coder
+          - llama2:latest
+      - provider: vertex
+        models:
+          - gemini-1.5-pro
+      - provider: bedrock
+        models:
+          - anthropic.claude-3-sonnet-20240229-v1:0
+    allow_edit: false
+    min_score: 70
+    blocked_patterns: []
+    severity_overrides: {}
+
+  - repo_pattern: "*/critical-*"
+    allowed_tools:
+      - review
+      - security
+    allowed_llms:
+      - provider: vertex
+        models:
+          - gemini-1.5-pro
+    allow_edit: false
+    min_score: 90
+    blocked_patterns:
+      - "*.lock"
+      - "*.sum"
+      - "dist/*"
+      - "build/*"
+    severity_overrides:
+      security: critical
+
+  - repo_pattern: "myorg/internal-tools"
+    allowed_tools:
+      - review
+      - describe
+      - improve
+      - test_gen
+    allowed_llms:
+      - provider: ollama
+        models:
+          - llama3.1
+    allow_edit: true
+    min_score: 60
+    blocked_patterns:
+      - "vendor/*"
+      - "node_modules/*"
+    severity_overrides: {}

@@ -1,0 +1,57 @@
+version: '3.8'
+
+services:
+  prism-ai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: prism-ai
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=false
+      - LLM_PROVIDER=ollama
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=llama3.1
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
+      - ./policy.yaml:/app/policy.yaml:ro
+    networks:
+      - prism-net
+    depends_on:
+      - ollama
+    restart: unless-stopped
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - prism-net
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: prism-frontend
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    networks:
+      - prism-net
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+  prism_data:
+
+networks:
+  prism-net:
+    driver: bridge
