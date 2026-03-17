@@ -1,12 +1,54 @@
-FROM node:20-alpine
+# ─────────────────────────────────────────────
+# Stage 1: Builder — install deps & build Vite app
+# ─────────────────────────────────────────────
+FROM node:20-alpine AS builder
+
+LABEL org.opencontainers.image.title="PRism-AI Frontend"
+LABEL org.opencontainers.image.description="Vite + React + TypeScript frontend for PRism-AI — AI-powered PR review agent"
+LABEL org.opencontainers.image.source="https://github.com/WhoisMonesh/PRism-AI"
+LABEL org.opencontainers.image.licenses="MIT"
 
 WORKDIR /app
 
-COPY package*.json ./
-RUN npm install
+# Install dependencies (leverage cache layer)
+COPY package.json package-lock.json* ./
+RUN npm ci --prefer-offline
 
-COPY . .
+# Copy source and build
+COPY src/ ./src/
+COPY index.html vite.config.* tsconfig*.json tailwind.config.* postcss.config.* ./
 
-EXPOSE 5173
+RUN npm run build
 
-CMD ["npm", "run", "dev", "--", "--host"]
+# ─────────────────────────────────────────────
+# Stage 2: Runtime — serve with nginx
+# ─────────────────────────────────────────────
+FROM nginx:1.27-alpine AS runtime
+
+# Remove default nginx page
+RUN rm -rf /usr/share/nginx/html/*
+
+# Copy built assets from builder
+COPY --from=builder /app/dist /usr/share/nginx/html
+
+# nginx config: SPA fallback for React Router
+RUN printf 'server {\n\
+    listen 80;\n\
+    root /usr/share/nginx/html;\n\
+    index index.html;\n\
+    location / {\n\
+        try_files $uri $uri/ /index.html;\n\
+    }\n\
+    location /api/ {\n\
+        proxy_pass http://backend:8000;\n\
+        proxy_set_header Host $host;\n\
+        proxy_set_header X-Real-IP $remote_addr;\n\
+    }\n\
+}\n' > /etc/nginx/conf.d/default.conf
+
+EXPOSE 80
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD wget -qO- http://localhost/ || exit 1
+
+CMD ["nginx", "-g", "daemon off;"]
