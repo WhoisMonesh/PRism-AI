@@ -1,0 +1,103 @@
+name: Auto Pull Request Bot
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+      - 'feat/**'
+      - 'fix/**'
+      - 'hotfix/**'
+      - 'chore/**'
+      - 'refactor/**'
+      - 'enhancement/**'
+      - 'improve/**'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  auto-pr:
+    name: Auto Create PR
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect branch type and set PR metadata
+        id: meta
+        run: |
+          BRANCH="${GITHUB_REF#refs/heads/}"
+          echo "branch=$BRANCH" >> $GITHUB_OUTPUT
+
+          # Determine title prefix from branch name
+          if [[ "$BRANCH" == feature/* ]] || [[ "$BRANCH" == feat/* ]]; then
+            PREFIX="feat"
+            LABEL="enhancement"
+            EMOJI="✨"
+          elif [[ "$BRANCH" == fix/* ]] || [[ "$BRANCH" == hotfix/* ]]; then
+            PREFIX="fix"
+            LABEL="bug"
+            EMOJI="🐛"
+          elif [[ "$BRANCH" == chore/* ]]; then
+            PREFIX="chore"
+            LABEL="maintenance"
+            EMOJI="🔧"
+          elif [[ "$BRANCH" == refactor/* ]]; then
+            PREFIX="refactor"
+            LABEL="refactor"
+            EMOJI="♻️"
+          elif [[ "$BRANCH" == enhancement/* ]] || [[ "$BRANCH" == improve/* ]]; then
+            PREFIX="enhance"
+            LABEL="enhancement"
+            EMOJI="🚀"
+          else
+            PREFIX="update"
+            LABEL="update"
+            EMOJI="📦"
+          fi
+
+          # Clean branch name to title
+          SLUG=$(echo "$BRANCH" | sed 's|.*/||' | tr '-_' ' ' | sed 's/\b./\u&/g')
+          echo "title=$EMOJI $PREFIX: $SLUG" >> $GITHUB_OUTPUT
+          echo "label=$LABEL" >> $GITHUB_OUTPUT
+
+      - name: Get commit log for PR body
+        id: commits
+        run: |
+          LOG=$(git log origin/main..HEAD --oneline --no-merges | head -20)
+          echo "log<<EOF" >> $GITHUB_OUTPUT
+          echo "$LOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create or update Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          title: ${{ steps.meta.outputs.title }}
+          body: |
+            ## 🤖 Auto-generated PR by PRism-AI Bot
+
+            **Branch:** `${{ steps.meta.outputs.branch }}`
+            **Type:** `${{ steps.meta.outputs.label }}`
+
+            ### 📝 Recent Commits
+            ```
+            ${{ steps.commits.outputs.log }}
+            ```
+
+            ### ✅ Checklist
+            - [ ] Code reviewed
+            - [ ] Tests passing
+            - [ ] Documentation updated
+            - [ ] No breaking changes
+
+            ---
+            *This PR was automatically created by [PRism-AI Bot](.github/workflows/auto-pr.yml)*
+          base: main
+          branch: ${{ steps.meta.outputs.branch }}
+          labels: ${{ steps.meta.outputs.label }},auto-pr
+          draft: false
+          delete-branch: false
