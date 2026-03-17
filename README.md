@@ -99,6 +99,7 @@ Copy `.env.example` to `.env` and configure:
 | `AZURE_OPENAI_DEPLOYMENT` | Azure deployment name | — |
 | `GITHUB_TOKEN` | GitHub personal access / app token | — |
 | `GITHUB_WEBHOOK_SECRET` | Webhook HMAC secret | — |
+| `PRISM_AI_URL` | PRism-AI backend URL (for GitHub Actions workflow) | — |
 | `GITLAB_TOKEN` | GitLab private token | — |
 | `GITLAB_WEBHOOK_SECRET` | GitLab webhook secret | — |
 | `GITEA_TOKEN` | Gitea API token | — |
@@ -208,6 +209,19 @@ repos:
 4. Trigger: **Pull Request**
 
 ---
+
+### GitHub Actions (Alternative Method)
+
+If you prefer to trigger reviews via GitHub Actions instead of webhooks:
+
+1. Copy the workflow file from `.github/workflows/pr-review.yml` to your repository
+2. Go to **Repo → Settings → Secrets and variables → Actions → New repository secret**
+3. Add secret:
+   - Name: `PRISM_AI_URL`
+   - Value: `https://your-server:8000` (your PRism-AI backend URL)
+4. The workflow will automatically trigger on pull request events and send webhook to your PRism-AI backend
+
+**Note:** Ensure your PRism-AI backend is publicly accessible or use a VPN/tunnel service like ngrok for development.
 
 ## 🐳 Docker Deployment
 
