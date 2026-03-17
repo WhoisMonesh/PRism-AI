@@ -41,7 +41,7 @@ jobs:
 
       - name: Extract metadata for frontend
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.OWNER }}/prism-ai-frontend
           labels: |
@@ -94,7 +94,7 @@ jobs:
 
       - name: Extract metadata for backend
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ env.REGISTRY }}/${{ env.OWNER }}/prism-ai-backend
           labels: |
