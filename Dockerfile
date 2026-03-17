@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────
 # Stage 1: Builder — install dependencies
 # ─────────────────────────────────────────────
-FROM python:3.14-slim AS builder
+FROM python:3.12-slim AS builder
 
 LABEL org.opencontainers.image.title="PRism-AI Backend"
 LABEL org.opencontainers.image.description="FastAPI backend for PRism-AI — AI-powered PR review agent"
@@ -33,7 +33,7 @@ RUN pip install --upgrade pip && \
 # ─────────────────────────────────────────────
 # Stage 2: Runtime — lean production image
 # ─────────────────────────────────────────────
-FROM python:3.14-slim AS runtime
+FROM python:3.12-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
