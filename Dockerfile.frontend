@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────
 # Stage 1: Builder — install deps & build Vite app
 # ─────────────────────────────────────────────
-FROM node:22-alpine AS builder
+FROM node:25-alpine AS builder
 LABEL org.opencontainers.image.title="PRism-AI Frontend"
 LABEL org.opencontainers.image.description="Vite + React + TypeScript frontend for PRism-AI — AI-powered PR review agent"
 LABEL org.opencontainers.image.source="https://github.com/WhoisMonesh/PRism-AI"
